@@ -1,0 +1,41 @@
+---
+- hosts: nodes
+
+  vars:
+    packages:
+      - build-essential
+      - dkms
+      - unzip
+      - wget
+
+  tasks:
+    - name: update apt-get
+      become: yes
+      apt:
+        upgrade: yes
+        update_cache: yes
+
+    - name: install packages
+      become: yes
+      apt:
+        pkg: "{{ item }}"
+        state: present
+        update_cache: yes
+      with_items: "{{ packages }}"
+
+    # emit a debug message with each package
+    - debug:
+        msg: "{{ item }}"
+      with_items: "{{packages}}"
+
+    - name: add deb line to sources.list
+      become: yes
+      lineinfile:
+        path: /etc/apt/sources.list
+        line: 'deb http://security.ubuntu.com/ubuntu trusty-security multiverse'
+
+    - name: add oracle box repository
+      become: yes
+      lineinfile:
+        path: /etc/apt/sources.list
+        line: 'deb http://download.virtualbox.org/virtualbox/debian trusty contrib'
