@@ -1,5 +1,6 @@
 ---
 - hosts: nodes
+  gather_facts: no
 
   vars:
     packages:
@@ -9,15 +10,25 @@
       - wget
     PHPpackages:
       - apache2
-      - php5
-      - php5-mysql
-      - libapache2-mod-php5
+      - php
+      - php-mysql
+      - libapache2-mod-php
       - php-soap
-      # - php-xml #seems to come with php5 already, when i check with php -m, otherwise apt get does not find it
+      - php-xml
 
     # oracle_key_file: "{{ ansible_env.HOME }}/oraclekey/oracle_key"
 
   tasks:
+    - name: install python 2
+      raw: test -e /usr/bin/python || (sudo apt -y update && sudo apt install -y python-minimal)
+
+    - name: wait for SSH to respond on all hosts
+      local_action: wait_for port=22
+
+    - name: gather facts
+      setup:
+
+    # Rest of tasks after installing python on the machine
     - name: update apt-get
       become: yes
       apt:
@@ -37,38 +48,43 @@
         msg: "{{ item }}"
       with_items: "{{packages}}"
 
-    - name: Restart the system
-      become: yes
-      shell: reboot
-      async: 0
+    - name: restart server
+      shell: sleep 2 && shutdown -r now
+      async: 1
       poll: 0
+      become: yes
+      become_method: sudo
+      ignore_errors: true
 
-    - name: Wait for server to restart
-      local_action: wait_for host={{ inventory_hostname }} state=started port=22 delay=5 timeout=30
+    - pause:
+        seconds: 30
 
-    - name: add deb trusty main restricted line to sources.list
+    - name: waiting for server to come back after reboot
+      local_action: wait_for host={{ ansible_ssh_host }} state=started port=22 delay=30 timeout=300 connect_timeout=15
+
+    - name: add deb xenial main restricted line to sources.list
       become: yes
       lineinfile:
         path: /etc/apt/sources.list
-        line: 'deb http://security.ubuntu.com/ubuntu trusty-security main restricted'
+        line: 'deb http://security.ubuntu.com/ubuntu xenial-security main restricted'
 
-    - name: add deb trusty universe line to sources.list
+    - name: add deb xenial universe line to sources.list
       become: yes
       lineinfile:
         path: /etc/apt/sources.list
-        line: 'deb http://security.ubuntu.com/ubuntu trusty-security universe'
+        line: 'deb http://security.ubuntu.com/ubuntu xenial-security universe'
 
-    - name: add deb trusty multiverse line to sources.list
+    - name: add deb xenial multiverse line to sources.list
       become: yes
       lineinfile:
         path: /etc/apt/sources.list
-        line: 'deb http://security.ubuntu.com/ubuntu trusty-security multiverse'
+        line: 'deb http://security.ubuntu.com/ubuntu xenial-security multiverse'
 
     # - name: add oracle box repository to sources.list
     #   become: yes
     #   lineinfile:
     #     path: /etc/apt/sources.list
-    #     line: 'deb http://download.virtualbox.org/virtualbox/debian trusty contrib'
+    #     line: 'deb http://download.virtualbox.org/virtualbox/debian xenial contrib'
 
     - name: add oracle key to apt key
       become: yes
@@ -77,8 +93,9 @@
         state: present
 
     - name: Add VirtualBox repo
+      become: yes
       apt_repository:
-        repo: 'deb http://download.virtualbox.org/virtualbox/debian trusty contrib'
+        repo: 'deb http://download.virtualbox.org/virtualbox/debian xenial contrib'
         state: present
         update_cache: yes
 
@@ -106,22 +123,26 @@
         append: yes # append groups
         groups: vboxusers
         update_password: on_create # only touch PW on user creation
-        password: $6$12346789$LOJiuxAUNIEROWh9H4rZ6Stctr1huDh7UT4uzN5yx/tjmTGIlMb4CXNSdRfKPZWaNjR5rgX1ixKcveEE8REFU. #'pass' encrypted using mkpasswd --method=sha-512 pass -s "12346789"
+        password: $6$12346789$LOJiuxAUNIEROWh9H4rZ6Stctr1huDh7UT4uzN5yx/tjmTGIlMb4CXNSdRfKPZWaNjR5rgX1ixKcveEE8REFU. #'pass' hashed using mkpasswd --method=sha-512 pass -s "12346789"
 
-    - name: Check if virtualbox kernel modules are loaded or not
+    - name: start the vboxdrv service
       become: yes
-      shell: "/etc/init.d/vboxdrv status"
-      register: vbKerMod
+      systemd: state=started name=vboxdrv
+
+    # - name: Check if virtualbox kernel modules are loaded or not
+    #   become: yes
+    #   shell: "/etc/init.d/vboxdrv status"
+    #   register: vbKerMod
 
     #just see what is in the variable vbKerMod to confirm the modules are loaded
-    - debug:
-        var: vbKerMod
+    # - debug:
+    #     var: vbKerMod
 
-    # only run setup if the modules are NOT loaded
-    - name: setup virtualbox kernals if not loaded
-      become: yes
-      shell: "/etc/init.d/vboxdrv setup"
-      when: 'vbKerMod.stdout != "VirtualBox kernel modules (vboxdrv, vboxnetflt, vboxnetadp, vboxpci) are loaded."'
+    # # only run setup if the modules are NOT loaded
+    # - name: setup virtualbox kernals if not loaded
+    #   become: yes
+    #   shell: "/etc/init.d/vboxdrv setup"
+    #   when: 'vbKerMod.stdout != "VirtualBox kernel modules (vboxdrv, vboxnetflt, vboxnetadp, vboxpci) are loaded."'
 
     - name: get extensions for virtual box
       become: yes
@@ -179,8 +200,6 @@
     - name: copy config file using shell b/c 
       become: yes
       shell: "cp /var/www/html/phpvirtualbox/config.php-example /var/www/html/phpvirtualbox/config.php"
-      tags:
-        - test
 
     - name: change user in config file
       become: yes
@@ -188,8 +207,6 @@
         path: /var/www/html/phpvirtualbox/config.php
         regexp: '^var \$username = '
         line: "var $username = 'vbuser';"
-      tags:
-        - test
 
     - name: change password in config file
       become: yes
@@ -197,5 +214,41 @@
         path: /var/www/html/phpvirtualbox/config.php
         regexp: '^var \$password = '
         line: "var $password = 'pass';"
-      tags:
-        - test
+
+    - name: Create a new file called virtualbox in etc/default
+      become: yes
+      file:
+        path: /etc/default/virtualbox
+        state: touch
+
+    - name: add line to the newly created file
+      become: yes
+      lineinfile:
+        path: /etc/default/virtualbox
+        line: "VBOXWEB_USER=vbuser"
+
+    - name: restart vboxweb service
+      become: yes
+      systemd:
+        name: vboxweb-service
+        state: restarted
+
+    - name: restart vboxdrv service
+      become: yes
+      systemd:
+        name: vboxdrv
+        state: restarted
+
+    - name: restart apache2 service
+      become: yes
+      systemd:
+        name: apache2
+        state: restarted
+
+    - name: install vagrant
+      become: yes
+      apt:
+        name: vagrant
+        state: present
+
+
