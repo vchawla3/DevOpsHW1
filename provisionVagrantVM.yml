@@ -1,0 +1,24 @@
+---
+- hosts: nodes
+
+
+  tasks:
+    - name: remove Vagrantfile
+      file: 
+        path: "{{ ansible_env.HOME }}/Vagrantfile"
+        state: absent
+
+    - name: init Vagrant
+      shell: vagrant init hashicorp/precise32
+
+    - name: edit VagrantFile to uncomment configure loop
+      become: yes
+      lineinfile:
+        path: "{{ ansible_env.HOME }}/Vagrantfile"
+        regexp: '^end'
+        insertbefore: '^end'
+        #regexp: '^# config.vm.provider '
+        line: "   config.vm.provider \"virtualbox\" do |vb|\n     vb.cpus = 1\n   end\nend"
+
+    - name: up Vagrant
+      shell: vagrant up
