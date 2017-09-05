@@ -7,12 +7,21 @@
       - dkms
       - unzip
       - wget
+    PHPpackages:
+      - apache2
+      - php5
+      - php5-mysql
+      - libapache2-mod-php5
+      - php-soap
+      # - php-xml #seems to come with php5 already, when i check with php -m, otherwise apt get does not find it
+
+    # oracle_key_file: "{{ ansible_env.HOME }}/oraclekey/oracle_key"
 
   tasks:
     - name: update apt-get
       become: yes
       apt:
-        upgrade: yes
+        upgrade: dist
         update_cache: yes
 
     - name: install packages
@@ -28,14 +37,165 @@
         msg: "{{ item }}"
       with_items: "{{packages}}"
 
-    - name: add deb line to sources.list
+    - name: Restart the system
+      become: yes
+      shell: reboot
+      async: 0
+      poll: 0
+
+    - name: Wait for server to restart
+      local_action: wait_for host={{ inventory_hostname }} state=started port=22 delay=5 timeout=30
+
+    - name: add deb trusty main restricted line to sources.list
+      become: yes
+      lineinfile:
+        path: /etc/apt/sources.list
+        line: 'deb http://security.ubuntu.com/ubuntu trusty-security main restricted'
+
+    - name: add deb trusty universe line to sources.list
+      become: yes
+      lineinfile:
+        path: /etc/apt/sources.list
+        line: 'deb http://security.ubuntu.com/ubuntu trusty-security universe'
+
+    - name: add deb trusty multiverse line to sources.list
       become: yes
       lineinfile:
         path: /etc/apt/sources.list
         line: 'deb http://security.ubuntu.com/ubuntu trusty-security multiverse'
 
-    - name: add oracle box repository
+    # - name: add oracle box repository to sources.list
+    #   become: yes
+    #   lineinfile:
+    #     path: /etc/apt/sources.list
+    #     line: 'deb http://download.virtualbox.org/virtualbox/debian trusty contrib'
+
+    - name: add oracle key to apt key
+      become: yes
+      apt_key:
+        url: "https://www.virtualbox.org/download/oracle_vbox_2016.asc"
+        state: present
+
+    - name: Add VirtualBox repo
+      apt_repository:
+        repo: 'deb http://download.virtualbox.org/virtualbox/debian trusty contrib'
+        state: present
+        update_cache: yes
+
+    - name: sudo apt-get update
+      become: yes
+      apt:
+        upgrade: dist
+        update_cache: yes
+
+    - name: install virtualbox
+      become: yes
+      apt:
+        name: virtualbox-5.0
+        state: present
+        force: yes
+        update_cache: yes
+
+    - name: make new user and add to virtualbox users
+      become: yes
+      user:
+        name: vbuser
+        createhome: yes
+        shell: '/bin/bash'
+        state: present
+        append: yes # append groups
+        groups: vboxusers
+        update_password: on_create # only touch PW on user creation
+        password: $6$12346789$LOJiuxAUNIEROWh9H4rZ6Stctr1huDh7UT4uzN5yx/tjmTGIlMb4CXNSdRfKPZWaNjR5rgX1ixKcveEE8REFU. #'pass' encrypted using mkpasswd --method=sha-512 pass -s "12346789"
+
+    - name: Check if virtualbox kernel modules are loaded or not
+      become: yes
+      shell: "/etc/init.d/vboxdrv status"
+      register: vbKerMod
+
+    #just see what is in the variable vbKerMod to confirm the modules are loaded
+    - debug:
+        var: vbKerMod
+
+    # only run setup if the modules are NOT loaded
+    - name: setup virtualbox kernals if not loaded
+      become: yes
+      shell: "/etc/init.d/vboxdrv setup"
+      when: 'vbKerMod.stdout != "VirtualBox kernel modules (vboxdrv, vboxnetflt, vboxnetadp, vboxpci) are loaded."'
+
+    - name: get extensions for virtual box
+      become: yes
+      get_url:
+        url: http://download.virtualbox.org/virtualbox/5.0.24/Oracle_VM_VirtualBox_Extension_Pack-5.0.24-108355.vbox-extpack
+        dest: /tmp/Oracle_VM_VirtualBox_Extension_Pack-5.0.24-108355.vbox-extpack
+
+    - name: install extensions for virtual box using linux utility yes to respond to license agreement
+      become: yes
+      shell: "yes | VBoxManage extpack install --replace /tmp/Oracle_VM_VirtualBox_Extension_Pack-5.0.24-108355.vbox-extpack"
+
+
+    #Now PHP virtual box tasks
+    - name: install PHPvirtualbox packages
+      become: yes
+      apt:
+        pkg: "{{ item }}"
+        state: present
+        update_cache: yes
+      with_items: "{{ PHPpackages }}"
+
+    - name: remove phpvirtualbox folder in case it exists and files and folders are inside
+      become: yes
+      file:
+        path: /var/www/html/phpvirtualbox
+        state: absent
+
+    - name: create directory for phpVirtualBox to be unzipped to
+      become: yes
+      file:
+        path: /var/www/html/phpvirtualbox
+        state: directory
+        mode: 0777
+
+    - name: unzip phpvirtualbox
+      become: yes
+      unarchive: 
+        src: https://sourceforge.net/projects/phpvirtualbox/files/phpvirtualbox-5.0-5.zip
+        dest: /var/www/html/
+        mode: 0777
+        remote_src: yes
+
+    - name: Move data out of phpvirtualbox-5.0-5 folder into phpvirtualbox dir
+      become: yes
+      shell: "mv /var/www/html/phpvirtualbox-5.0-5/* /var/www/html/phpvirtualbox && rm -r /var/www/html/phpvirtualbox-5.0-5/"
+
+    - name: chmod the new directory just in case
+      become: yes
+      file:
+        path: /var/www/html/phpvirtualbox
+        mode: 0777
+
+    # COPY module did not work and could not find the file even though it was there. 
+    # This should still be idempotent b/c i make sure it is a clean unzip/install/move of phpvirtualbox directory
+    - name: copy config file using shell b/c 
+      become: yes
+      shell: "cp /var/www/html/phpvirtualbox/config.php-example /var/www/html/phpvirtualbox/config.php"
+      tags:
+        - test
+
+    - name: change user in config file
       become: yes
       lineinfile:
-        path: /etc/apt/sources.list
-        line: 'deb http://download.virtualbox.org/virtualbox/debian trusty contrib'
+        path: /var/www/html/phpvirtualbox/config.php
+        regexp: '^var \$username = '
+        line: "var $username = 'vbuser';"
+      tags:
+        - test
+
+    - name: change password in config file
+      become: yes
+      lineinfile:
+        path: /var/www/html/phpvirtualbox/config.php
+        regexp: '^var \$password = '
+        line: "var $password = 'pass';"
+      tags:
+        - test
