@@ -197,6 +197,8 @@
         mode: 0777
         remote_src: yes
 
+    # COPY module did not work and could not find the file even though it was there. 
+    # This should still be idempotent b/c i make sure it is a clean unzip/install/move of phpvirtualbox directory
     - name: Move data out of phpvirtualbox-5.0-5 folder into phpvirtualbox dir
       become: yes
       shell: "mv /var/www/html/phpvirtualbox-5.0-5/* /var/www/html/phpvirtualbox && rm -r /var/www/html/phpvirtualbox-5.0-5/"
