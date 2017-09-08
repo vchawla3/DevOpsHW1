@@ -7,4 +7,7 @@ Configure.yml provisions xenial ubuntu 16.04 remote host with virtualbox, phpVir
 provisionVagrantVM.yml destroys any running vagrant vm, makes sure Vagrantfile is absent, then inits a vm, edits the vagrant file with necessary edits to make it work on this remote host, and runs vagrant up.
 
 ## Screencast
-[Link to screencast](https://youtu.be/h6K7sNhbY2g "vchawla3's screencast")
+[Youtube link to screencast](https://youtu.be/h6K7sNhbY2g "vchawla3's screencast")
+
+Well youtube uploaded a very low quality video so use this Vimeo [link for a higher quality](https://vimeo.com/233051549 "vchawla3 high quality")
+
