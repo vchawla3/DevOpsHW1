@@ -28,8 +28,6 @@
 
     - name: gather facts
       setup:
-      tags:
-        - test
 
     # Rest of tasks after installing python on the machine
     - name: update apt-get
