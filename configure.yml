@@ -15,6 +15,7 @@
       - libapache2-mod-php
       - php-soap
       - php-xml
+    box_file: "{{ ansible_env.HOME }}/precise32.box"
 
     # oracle_key_file: "{{ ansible_env.HOME }}/oraclekey/oracle_key"
 
@@ -27,6 +28,8 @@
 
     - name: gather facts
       setup:
+      tags:
+        - test
 
     # Rest of tasks after installing python on the machine
     - name: update apt-get
@@ -113,16 +116,27 @@
         force: yes
         update_cache: yes
 
+    # - name: make new user and add to virtualbox users
+    #   become: yes
+    #   user:
+    #     name: vbuser
+    #     createhome: yes
+    #     shell: '/bin/bash'
+    #     state: present
+    #     append: yes # append groups
+    #     groups: vboxusers
+    #     update_password: on_create # only touch PW on user creation
+    #     password: $6$12346789$LOJiuxAUNIEROWh9H4rZ6Stctr1huDh7UT4uzN5yx/tjmTGIlMb4CXNSdRfKPZWaNjR5rgX1ixKcveEE8REFU. #'pass' hashed using mkpasswd --method=sha-512 pass -s "12346789"
+
+    # Use the same Ubuntu user and change the password, not make a new user
     - name: make new user and add to virtualbox users
       become: yes
       user:
-        name: vbuser
-        createhome: yes
-        shell: '/bin/bash'
+        name: ubuntu
         state: present
         append: yes # append groups
         groups: vboxusers
-        update_password: on_create # only touch PW on user creation
+        update_password: always
         password: $6$12346789$LOJiuxAUNIEROWh9H4rZ6Stctr1huDh7UT4uzN5yx/tjmTGIlMb4CXNSdRfKPZWaNjR5rgX1ixKcveEE8REFU. #'pass' hashed using mkpasswd --method=sha-512 pass -s "12346789"
 
     - name: start the vboxdrv service
@@ -201,12 +215,19 @@
       become: yes
       shell: "cp /var/www/html/phpvirtualbox/config.php-example /var/www/html/phpvirtualbox/config.php"
 
+    # - name: change user in config file
+    #   become: yes
+    #   lineinfile:
+    #     path: /var/www/html/phpvirtualbox/config.php
+    #     regexp: '^var \$username = '
+    #     line: "var $username = 'vbuser';"
+
     - name: change user in config file
       become: yes
       lineinfile:
         path: /var/www/html/phpvirtualbox/config.php
         regexp: '^var \$username = '
-        line: "var $username = 'vbuser';"
+        line: "var $username = 'ubuntu';"
 
     - name: change password in config file
       become: yes
@@ -221,11 +242,18 @@
         path: /etc/default/virtualbox
         state: touch
 
+    # - name: add line to the newly created file
+    #   become: yes
+    #   lineinfile:
+    #     path: /etc/default/virtualbox
+    #     line: "VBOXWEB_USER=vbuser"
+
     - name: add line to the newly created file
       become: yes
       lineinfile:
         path: /etc/default/virtualbox
-        line: "VBOXWEB_USER=vbuser"
+        regexp: '^VBOXWEB_USER='
+        line: "VBOXWEB_USER=ubuntu"
 
     - name: restart vboxweb service
       become: yes
@@ -250,5 +278,11 @@
       apt:
         name: vagrant
         state: present
+
+    # - name: get 32 bit box
+    #   become: yes
+    #   get_url: 
+    #     url: http://files.vagrantup.com/precise32.box
+    #     dest: "{{ box_file }}"
 
 

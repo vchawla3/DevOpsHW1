@@ -3,6 +3,12 @@
 
 
   tasks:
+
+    # In case vagrant was up'd already
+    - name: destroy Vagrant VM
+      shell: vagrant destroy
+      ignore_errors: true
+
     - name: remove Vagrantfile
       file: 
         path: "{{ ansible_env.HOME }}/Vagrantfile"
